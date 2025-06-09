@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Live Speech Transcription</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: 'Inter', sans-serif;
+      font-size: larger;
+      background: linear-gradient(to right, #1d67ef, #cfdef3);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 50px;
+      color: #000000;
+    }
+
+    h1 {
+      font-size: 2.5rem;
+      margin-bottom: 1.2rem;
+      animation: fadeIn 1s ease-in-out;
+    }
+
+    #transcript {
+      background: #000000;
+      padding: 1.5rem;
+      width: 90%;
+      max-width: 700px;
+      border-radius: 12px;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+      font-size: 1.25rem;
+      line-height: 1.6;
+      text-align: center;
+      min-height: 100px;
+      color: white;
+      margin-bottom: 20px;
+    }
+
+    .btn-container {
+      display: flex;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+
+    button {
+      padding: 12px 24px;
+      font-size: 1rem;
+      border: none;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+
+    .start-btn {
+      background-color: #28a745;
+      color: white;
+    }
+
+    .stop-btn {
+      background-color: #dc3545;
+      color: white;
+    }
+
+    button:hover {
+      opacity: 0.9;
+      transform: scale(1.03);
+    }
+
+    footer {
+      margin-top: 30px;
+      font-size: 0.9rem;
+      color: #555;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <h1>Live Speech Transcription</h1>
+
+  <div id="transcript">Waiting for input...</div>
+
+  <div class="btn-container">
+    <button class="start-btn" onclick="startListening()">Start Listening</button>
+    <button class="stop-btn" onclick="stopListening()">Stop Listening</button>
+  </div>
+
+  <footer>Made with 💙 by Suvarna</footer>
+
+  <!-- Socket.IO -->
+  <script src="https://cdn.socket.io/4.3.2/socket.io.min.js"></script>
+  <script>
+    const socket = io();
+    const transcriptBox = document.getElementById("transcript");
+
+    let audioContext, processor, source;
+    let listening = false;
+
+    function startListening() {
+      if (listening) return;
+      navigator.mediaDevices.getUserMedia({ audio: true })
+        .then(stream => {
+          audioContext = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 16000 });
+          source = audioContext.createMediaStreamSource(stream);
+          processor = audioContext.createScriptProcessor(4096, 1, 1);
+
+          source.connect(processor);
+          processor.connect(audioContext.destination);
+
+          processor.onaudioprocess = (e) => {
+            const input = e.inputBuffer.getChannelData(0);
+            const int16Array = convertFloat32ToInt16(input);
+            if (socket && socket.connected) {
+              socket.emit("audio", int16Array.buffer);
+            }
+          };
+
+          listening = true;
+        })
+        .catch(error => {
+          console.error("Microphone access denied or not supported:", error);
+          transcriptBox.textContent = "Microphone access denied. Please allow access.";
+        });
+    }
+
+    function stopListening() {
+      if (!listening) return;
+
+      processor.disconnect();
+      source.disconnect();
+      audioContext.close();
+
+      listening = false;
+      transcriptBox.textContent = "Listening stopped.";
+    }
+
+    function convertFloat32ToInt16(buffer) {
+      let l = buffer.length;
+      const result = new Int16Array(l);
+      while (l--) {
+        result[l] = Math.min(1, buffer[l]) * 0x7FFF;
+      }
+      return result;
+    }
+
+    socket.on("transcript", (data) => {
+      const text = data.text || data.partial;
+      if (text) {
+        transcriptBox.textContent = text;
+      }
+    });
+  </script>
+</body>
+</html>
